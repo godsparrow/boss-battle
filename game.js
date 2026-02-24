@@ -1,80 +1,68 @@
 // ============================================
-// AAA INDIE BOSS FIGHT - PHASE 4.5
+// PHASE 5.5 — SCROLLING + ARENA LOCK
 // ============================================
 
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-canvas.width = 1280;
-canvas.height = 720;
+canvas.width = 1100;
+canvas.height = 650;
 
-// -----------------
-// GAME STATE
-// -----------------
-let gameState = "menu"; // menu, playing, dead
+let gameState = "menu";
+let worldWidth = 3000;
+let arenaLocked = false;
 
-// -----------------
-// INPUT
-// -----------------
+// ------------- INPUT -------------
 const keys = {};
 window.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
 window.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
 
-// -----------------
-// CAMERA
-// -----------------
-const camera = { x: 0, smooth: 0.08 };
+// ------------- CAMERA -------------
+const camera = {
+    x: 0,
+    smooth: 0.08
+};
 
-// -----------------
-// PLAYER
-// -----------------
+// ------------- PLAYER -------------
 const player = {
-    x: 400,
-    y: 500,
-    width: 48,
-    height: 64,
-    speed: 5,
+    x: 200,
+    y: 450,
+    width: 42,
+    height: 60,
+    speed: 4.5,
     vx: 0,
     vy: 0,
-    gravity: 0.8,
-    jumpForce: -16,
+    gravity: 0.45,      // smoother gravity
+    jumpForce: -11,
     onGround: false,
     facing: 1,
     hp: 100,
     maxHp: 100,
 
-    dashSpeed: 20,
-    dashDuration: 10,
+    dashSpeed: 14,
     dashTimer: 0,
-    dashCooldown: 60,
-    dashCDTimer: 0,
-
-    shootCooldown: 12,
-    shootTimer: 0
+    dashDuration: 8,
+    dashCooldown: 50,
+    dashCD: 0
 };
 
-const groundY = 580;
+const groundY = 560;
 
-// -----------------
-// BOSS
-// -----------------
+// ------------- BOSS -------------
 const boss = {
-    x: 1600,
-    y: 420,
+    x: 2400,
+    y: 380,
     width: 120,
-    height: 160,
-    hp: 500,
-    maxHp: 500
+    height: 140,
+    hp: 400,
+    maxHp: 400,
+    attackTimer: 0
 };
 
-// -----------------
-// BULLETS
-// -----------------
-const bullets = [];
+const bossBullets = [];
+const playerBullets = [];
 
-// -----------------
-// MAIN UPDATE
-// -----------------
+// ------------- UPDATE -------------
 function update() {
 
     if (gameState !== "playing") return;
@@ -87,7 +75,7 @@ function update() {
         player.vx = player.speed;
         player.facing = 1;
     } else {
-        player.vx *= 0.8;
+        player.vx *= 0.75;
     }
 
     // JUMP
@@ -97,9 +85,9 @@ function update() {
     }
 
     // DASH
-    if (keys["shift"] && player.dashTimer <= 0 && player.dashCDTimer <= 0) {
+    if (keys["shift"] && player.dashTimer <= 0 && player.dashCD <= 0) {
         player.dashTimer = player.dashDuration;
-        player.dashCDTimer = player.dashCooldown;
+        player.dashCD = player.dashCooldown;
     }
 
     if (player.dashTimer > 0) {
@@ -107,21 +95,7 @@ function update() {
         player.dashTimer--;
     }
 
-    if (player.dashCDTimer > 0) player.dashCDTimer--;
-
-    // SHOOT
-    if (keys[" "] && player.shootTimer <= 0) {
-        bullets.push({
-            x: player.x + player.width / 2,
-            y: player.y + player.height / 2,
-            vx: player.facing * 14,
-            width: 10,
-            height: 4
-        });
-        player.shootTimer = player.shootCooldown;
-    }
-
-    if (player.shootTimer > 0) player.shootTimer--;
+    if (player.dashCD > 0) player.dashCD--;
 
     // PHYSICS
     player.vy += player.gravity;
@@ -134,37 +108,86 @@ function update() {
         player.onGround = true;
     }
 
-    // BULLETS
-    for (let i = bullets.length - 1; i >= 0; i--) {
-        let b = bullets[i];
+    // Clamp world bounds
+    if (player.x < 0) player.x = 0;
+    if (player.x > worldWidth - player.width)
+        player.x = worldWidth - player.width;
+
+    // SHOOT
+    if (keys[" "] && playerBullets.length < 4) {
+        playerBullets.push({
+            x: player.x + player.width/2,
+            y: player.y + 20,
+            vx: player.facing * 9
+        });
+    }
+
+    playerBullets.forEach((b, i) => {
         b.x += b.vx;
 
         if (
             b.x < boss.x + boss.width &&
-            b.x + b.width > boss.x &&
+            b.x > boss.x &&
             b.y < boss.y + boss.height &&
-            b.y + b.height > boss.y
+            b.y > boss.y
         ) {
             boss.hp -= 5;
-            bullets.splice(i, 1);
+            playerBullets.splice(i, 1);
         }
+    });
 
-        if (b.x < 0 || b.x > 4000) bullets.splice(i, 1);
+    // -------- BOSS TRIGGER --------
+    if (player.x > 2100 && !arenaLocked) {
+        arenaLocked = true;
     }
 
-    // CAMERA FOLLOW
-    let targetX = player.x - canvas.width / 2;
-    camera.x += (targetX - camera.x) * camera.smooth;
+    // -------- BOSS ATTACKS --------
+    if (arenaLocked && boss.hp > 0) {
+        boss.attackTimer++;
+
+        if (boss.attackTimer % 90 === 0) {
+            for (let i = -2; i <= 2; i++) {
+                bossBullets.push({
+                    x: boss.x,
+                    y: boss.y + 60,
+                    vx: -5,
+                    vy: i * 2
+                });
+            }
+        }
+    }
+
+    bossBullets.forEach((b, i) => {
+        b.x += b.vx;
+        b.y += b.vy;
+
+        if (
+            b.x < player.x + player.width &&
+            b.x > player.x &&
+            b.y < player.y + player.height &&
+            b.y > player.y
+        ) {
+            player.hp -= 5;
+            bossBullets.splice(i, 1);
+        }
+    });
+
+    // CAMERA
+    if (!arenaLocked) {
+        let targetX = player.x - canvas.width/2;
+        camera.x += (targetX - camera.x) * camera.smooth;
+    } else {
+        // Lock camera near boss arena
+        camera.x = 1900;
+    }
 
     if (player.hp <= 0) gameState = "dead";
 }
 
-// -----------------
-// DRAW
-// -----------------
+// ------------- DRAW -------------
 function draw() {
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0,0,canvas.width,canvas.height);
 
     if (gameState === "menu") {
         drawMenu();
@@ -176,100 +199,79 @@ function draw() {
         return;
     }
 
-    // BACKGROUND
-    ctx.fillStyle = "#0a0a12";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Background
+    ctx.fillStyle = "#0c0c18";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
 
-    // Parallax pillars
-    ctx.fillStyle = "#151525";
+    // Parallax mountains
+    ctx.fillStyle = "#181830";
     for (let i = 0; i < 20; i++) {
-        let x = (i * 400 - camera.x * 0.4) % 4000;
-        ctx.fillRect(x, 300, 40, 300);
+        let x = (i * 300 - camera.x * 0.3);
+        ctx.fillRect(x, 350, 200, 250);
     }
 
-    // GROUND
-    ctx.fillStyle = "#222";
-    ctx.fillRect(0, groundY, canvas.width, 200);
+    // Ground
+    ctx.fillStyle = "#333";
+    ctx.fillRect(-camera.x, groundY, worldWidth, 100);
 
-    // BOSS (stylized)
-    ctx.fillStyle = "#8b0000";
+    // Boss
+    ctx.fillStyle = "#aa0000";
     ctx.fillRect(boss.x - camera.x, boss.y, boss.width, boss.height);
-    ctx.fillStyle = "#ff0044";
-    ctx.fillRect(boss.x - camera.x + 20, boss.y + 40, 80, 80);
 
-    // PLAYER (stylized pixel look)
+    // Player
     ctx.fillStyle = "#00ffff";
     ctx.fillRect(player.x - camera.x, player.y, player.width, player.height);
-    ctx.fillStyle = "#007777";
-    ctx.fillRect(player.x - camera.x + 10, player.y + 20, 28, 30);
 
-    // BULLETS
+    // Bullets
     ctx.fillStyle = "white";
-    bullets.forEach(b => {
-        ctx.fillRect(b.x - camera.x, b.y, b.width, b.height);
-    });
+    playerBullets.forEach(b =>
+        ctx.fillRect(b.x - camera.x, b.y, 8, 4)
+    );
+
+    ctx.fillStyle = "orange";
+    bossBullets.forEach(b =>
+        ctx.fillRect(b.x - camera.x, b.y, 6, 6)
+    );
 
     drawUI();
 }
 
-// -----------------
-// UI
-// -----------------
+// ------------- UI -------------
 function drawUI() {
-
-    // Boss HP
-    let bossRatio = boss.hp / boss.maxHp;
     ctx.fillStyle = "#400";
-    ctx.fillRect(canvas.width / 2 - 300, 20, 600, 25);
-    ctx.fillStyle = "#ff0033";
-    ctx.fillRect(canvas.width / 2 - 300, 20, 600 * bossRatio, 25);
+    ctx.fillRect(300,20,500,20);
+    ctx.fillStyle = "#f00";
+    ctx.fillRect(300,20,500*(boss.hp/boss.maxHp),20);
 
-    // Player HP
-    let playerRatio = player.hp / player.maxHp;
     ctx.fillStyle = "#044";
-    ctx.fillRect(20, 20, 200, 20);
-    ctx.fillStyle = "#00ffff";
-    ctx.fillRect(20, 20, 200 * playerRatio, 20);
+    ctx.fillRect(20,20,200,15);
+    ctx.fillStyle = "#0ff";
+    ctx.fillRect(20,20,200*(player.hp/player.maxHp),15);
 }
 
-// -----------------
-// MENU
-// -----------------
+// ------------- MENU -------------
 function drawMenu() {
     ctx.fillStyle = "black";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
+    ctx.fillRect(0,0,canvas.width,canvas.height);
     ctx.fillStyle = "white";
-    ctx.font = "48px monospace";
-    ctx.fillText("VOID EXECUTION", 400, 300);
-
-    ctx.font = "24px monospace";
-    ctx.fillText("Press Enter to Start", 480, 380);
-
-    if (keys["enter"]) {
-        gameState = "playing";
-    }
+    ctx.font = "40px monospace";
+    ctx.fillText("SCROLLING BOSS PROTOTYPE", 300, 280);
+    ctx.font = "20px monospace";
+    ctx.fillText("Press Enter", 470, 340);
+    if (keys["enter"]) gameState = "playing";
 }
 
-// -----------------
-// DEATH
-// -----------------
+// ------------- DEATH -------------
 function drawDeath() {
     ctx.fillStyle = "black";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
+    ctx.fillRect(0,0,canvas.width,canvas.height);
     ctx.fillStyle = "red";
-    ctx.font = "48px monospace";
-    ctx.fillText("YOU DIED", 520, 350);
-
-    ctx.font = "24px monospace";
-    ctx.fillText("Refresh to Retry", 500, 400);
+    ctx.font = "40px monospace";
+    ctx.fillText("YOU DIED", 420, 300);
 }
 
-// -----------------
-// LOOP
-// -----------------
-function loop() {
+// ------------- LOOP -------------
+function loop(){
     update();
     draw();
     requestAnimationFrame(loop);
