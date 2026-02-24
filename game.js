@@ -1,10 +1,7 @@
 // ============================================
-// TRIPLE-A INDIE BOSS FIGHT - PHASE 3
+// TRIPLE-A INDIE BOSS FIGHT - PHASE 4
 // ============================================
 
-// -----------------
-// CANVAS SETUP
-// -----------------
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
@@ -19,16 +16,25 @@ window.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
 window.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
 
 // -----------------
-// CAMERA
+// CAMERA + SHAKE
 // -----------------
 const camera = {
     x: 0,
     y: 0,
-    smooth: 0.08
+    smooth: 0.08,
+    shake: 0
 };
 
+function applyShake() {
+    if (camera.shake > 0) {
+        camera.shake--;
+        return (Math.random() - 0.5) * 10;
+    }
+    return 0;
+}
+
 // -----------------
-// PARTICLE ENGINE
+// PARTICLES
 // -----------------
 class Particle {
     constructor(x, y, vx, vy, life, size, color) {
@@ -40,13 +46,11 @@ class Particle {
         this.size = size;
         this.color = color;
     }
-
     update() {
         this.x += this.vx;
         this.y += this.vy;
         this.life--;
     }
-
     draw() {
         ctx.globalAlpha = this.life / 30;
         ctx.fillStyle = this.color;
@@ -54,21 +58,33 @@ class Particle {
         ctx.globalAlpha = 1;
     }
 }
-
 const particles = [];
 
-function spawnDust(x, y) {
-    for (let i = 0; i < 5; i++) {
+function spawnHitParticles(x, y) {
+    for (let i = 0; i < 8; i++) {
         particles.push(new Particle(
             x,
             y,
-            (Math.random() - 0.5) * 4,
-            Math.random() * -2,
+            (Math.random() - 0.5) * 6,
+            (Math.random() - 0.5) * 6,
             30,
             4,
-            "#aaa"
+            "#ff4444"
         ));
     }
+}
+
+// -----------------
+// DAMAGE NUMBERS
+// -----------------
+const damageNumbers = [];
+
+function spawnDamage(x, y, amount) {
+    damageNumbers.push({
+        x, y,
+        value: amount,
+        life: 40
+    });
 }
 
 // -----------------
@@ -80,18 +96,23 @@ const player = {
     width: 40,
     height: 60,
     speed: 6,
-    dashSpeed: 18,
-    dashTime: 0,
-    dashDuration: 12,
+    hp: 100,
+
+    dashSpeed: 20,
+    dashDuration: 10,
+    dashTimer: 0,
+    dashCooldown: 60,
+    dashCDTimer: 0,
+
     facing: 1,
-    afterImages: []
+    shootCooldown: 12,
+    shootTimer: 0
 };
 
 function updatePlayer() {
 
     let moving = false;
 
-    // FIXED A/D
     if (keys["a"]) {
         player.x -= player.speed;
         player.facing = -1;
@@ -103,41 +124,73 @@ function updatePlayer() {
         moving = true;
     }
 
-    // DASH BOTH DIRECTIONS
-    if (keys["shift"] && player.dashTime <= 0) {
-        player.dashTime = player.dashDuration;
+    // DASH
+    if (keys["shift"] && player.dashTimer <= 0 && player.dashCDTimer <= 0) {
+        player.dashTimer = player.dashDuration;
+        player.dashCDTimer = player.dashCooldown;
     }
 
-    if (player.dashTime > 0) {
+    if (player.dashTimer > 0) {
         player.x += player.facing * player.dashSpeed;
-        player.dashTime--;
-
-        player.afterImages.push({
-            x: player.x,
-            y: player.y,
-            life: 15
-        });
+        player.dashTimer--;
     }
 
-    if (moving) spawnDust(player.x + 20, player.y + 60);
+    if (player.dashCDTimer > 0) player.dashCDTimer--;
 
-    player.afterImages.forEach(img => img.life--);
-    player.afterImages = player.afterImages.filter(img => img.life > 0);
+    // SHOOT (space)
+    if (keys[" "] && player.shootTimer <= 0) {
+        bullets.push({
+            x: player.x + player.width / 2,
+            y: player.y + player.height / 2,
+            vx: player.facing * 12,
+            width: 8,
+            height: 4
+        });
+        player.shootTimer = player.shootCooldown;
+    }
+
+    if (player.shootTimer > 0) player.shootTimer--;
 }
 
 function drawPlayer() {
-
-    // Afterimages
-    player.afterImages.forEach(img => {
-        ctx.globalAlpha = img.life / 15;
-        ctx.fillStyle = "#00ffff";
-        ctx.fillRect(img.x - camera.x, img.y - camera.y, player.width, player.height);
-        ctx.globalAlpha = 1;
-    });
-
-    // Player body
     ctx.fillStyle = "#00ffff";
     ctx.fillRect(player.x - camera.x, player.y - camera.y, player.width, player.height);
+}
+
+// -----------------
+// BULLETS
+// -----------------
+const bullets = [];
+
+function updateBullets() {
+    for (let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+        b.x += b.vx;
+
+        // Collision
+        if (
+            b.x < boss.x + boss.width &&
+            b.x + b.width > boss.x &&
+            b.y < boss.y + boss.height &&
+            b.y + b.height > boss.y
+        ) {
+            boss.hp -= 5;
+            spawnHitParticles(b.x, b.y);
+            spawnDamage(b.x, b.y, 5);
+            camera.shake = 10;
+            bullets.splice(i, 1);
+            continue;
+        }
+
+        if (b.x < 0 || b.x > 4000) bullets.splice(i, 1);
+    }
+}
+
+function drawBullets() {
+    ctx.fillStyle = "#ffffff";
+    bullets.forEach(b =>
+        ctx.fillRect(b.x - camera.x, b.y - camera.y, b.width, b.height)
+    );
 }
 
 // -----------------
@@ -147,7 +200,8 @@ const boss = {
     x: 1600,
     y: 450,
     width: 100,
-    height: 140
+    height: 140,
+    hp: 500
 };
 
 function drawBoss() {
@@ -156,34 +210,18 @@ function drawBoss() {
 }
 
 // -----------------
-// PARALLAX BACKGROUND
+// UI
 // -----------------
-function drawBackground() {
+function drawUI() {
+    ctx.fillStyle = "red";
+    ctx.fillRect(20, 20, boss.hp, 20);
 
-    // Layer 1 - Far stars
-    ctx.fillStyle = "#111";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.fillStyle = "#1a1a1a";
-    for (let i = 0; i < 50; i++) {
-        let x = (i * 300 - camera.x * 0.2) % 4000;
-        ctx.fillRect(x, 100, 3, 3);
-    }
-
-    // Layer 2 - Mid
-    ctx.fillStyle = "#222";
-    for (let i = 0; i < 30; i++) {
-        let x = (i * 500 - camera.x * 0.5) % 4000;
-        ctx.fillRect(x, 300, 10, 200);
-    }
-
-    // Layer 3 - Foreground floor
-    ctx.fillStyle = "#333";
-    ctx.fillRect(0, 560, canvas.width, 200);
+    ctx.fillStyle = "cyan";
+    ctx.fillRect(20, 50, player.hp * 2, 15);
 }
 
 // -----------------
-// CAMERA FOLLOW
+// CAMERA
 // -----------------
 function updateCamera() {
     const targetX = player.x - canvas.width / 2;
@@ -191,30 +229,61 @@ function updateCamera() {
 }
 
 // -----------------
-// GAME LOOP
+// UPDATE
 // -----------------
 function update() {
     updatePlayer();
+    updateBullets();
     updateCamera();
 
     particles.forEach(p => p.update());
-    particles.splice(0, particles.filter(p => p.life <= 0).length);
+    for (let i = particles.length - 1; i >= 0; i--) {
+        if (particles[i].life <= 0) particles.splice(i, 1);
+    }
+
+    damageNumbers.forEach(d => {
+        d.y -= 1;
+        d.life--;
+    });
+    for (let i = damageNumbers.length - 1; i >= 0; i--) {
+        if (damageNumbers[i].life <= 0) damageNumbers.splice(i, 1);
+    }
 }
 
+// -----------------
+// DRAW
+// -----------------
 function draw() {
+
+    const shakeX = applyShake();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    drawBackground();
+    ctx.fillStyle = "#111";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.save();
+    ctx.translate(shakeX, 0);
+
     drawBoss();
     drawPlayer();
+    drawBullets();
 
     particles.forEach(p => p.draw());
+
+    damageNumbers.forEach(d => {
+        ctx.fillStyle = "#ffaaaa";
+        ctx.fillText(d.value, d.x - camera.x, d.y - camera.y);
+    });
+
+    ctx.restore();
+
+    drawUI();
 }
 
-function gameLoop() {
+function loop() {
     update();
     draw();
-    requestAnimationFrame(gameLoop);
+    requestAnimationFrame(loop);
 }
 
-gameLoop();
+loop();
