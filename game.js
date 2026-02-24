@@ -1,332 +1,220 @@
-// ==============================
-// AAA INDIE PHASE 2 ENGINE
-// ==============================
+// ============================================
+// TRIPLE-A INDIE BOSS FIGHT - PHASE 3
+// ============================================
 
+// -----------------
+// CANVAS SETUP
+// -----------------
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-// Bigger screen
 canvas.width = 1280;
 canvas.height = 720;
 
-// ==============================
-// TIME
-// ==============================
-let lastTime = 0;
-let delta = 0;
-let hitstop = 0;
-
-// ==============================
+// -----------------
 // INPUT
-// ==============================
-class Input {
-    constructor() {
-        this.keys = {};
-        window.addEventListener("keydown", e => this.keys[e.key.toLowerCase()] = true);
-        window.addEventListener("keyup", e => this.keys[e.key.toLowerCase()] = false);
-    }
-    down(key) { return this.keys[key]; }
-}
-const input = new Input();
+// -----------------
+const keys = {};
+window.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
+window.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
 
-// ==============================
+// -----------------
 // CAMERA
-// ==============================
-class Camera {
-    constructor() {
-        this.x = 0;
-        this.shakeTime = 0;
-        this.shakePower = 0;
-    }
-    update(dt) {
-        if (this.shakeTime > 0) this.shakeTime -= dt;
-    }
-    apply() {
-        if (this.shakeTime > 0) {
-            ctx.translate(
-                (Math.random() - 0.5) * this.shakePower,
-                (Math.random() - 0.5) * this.shakePower
-            );
-        }
-    }
-    shake(power, time) {
-        this.shakePower = power;
-        this.shakeTime = time;
-    }
-}
-const camera = new Camera();
+// -----------------
+const camera = {
+    x: 0,
+    y: 0,
+    smooth: 0.08
+};
 
-// ==============================
-// ENTITY BASE
-// ==============================
-class Entity {
-    constructor(x, y, w, h) {
+// -----------------
+// PARTICLE ENGINE
+// -----------------
+class Particle {
+    constructor(x, y, vx, vy, life, size, color) {
         this.x = x;
         this.y = y;
-        this.width = w;
-        this.height = h;
-        this.dead = false;
-    }
-    update(dt) {}
-    draw(ctx) {}
-    collides(other) {
-        return (
-            this.x < other.x + other.width &&
-            this.x + this.width > other.x &&
-            this.y < other.y + other.height &&
-            this.y + this.height > other.y
-        );
-    }
-}
-
-// ==============================
-// PARTICLES
-// ==============================
-class Particle extends Entity {
-    constructor(x, y, color) {
-        super(x, y, 4, 4);
-        this.dx = (Math.random() - 0.5) * 300;
-        this.dy = (Math.random() - 0.5) * 300;
-        this.life = 0.4;
+        this.vx = vx;
+        this.vy = vy;
+        this.life = life;
+        this.size = size;
         this.color = color;
     }
-    update(dt) {
-        this.x += this.dx * dt;
-        this.y += this.dy * dt;
-        this.life -= dt;
-        if (this.life <= 0) this.dead = true;
-    }
-    draw(ctx) {
-        ctx.fillStyle = this.color;
-        ctx.fillRect(this.x - camera.x, this.y, 4, 4);
-    }
-}
 
-// ==============================
-// DAMAGE NUMBER
-// ==============================
-class DamageNumber extends Entity {
-    constructor(x, y, value) {
-        super(x, y, 0, 0);
-        this.value = value;
-        this.life = 1;
-    }
-    update(dt) {
-        this.y -= 40 * dt;
-        this.life -= dt;
-        if (this.life <= 0) this.dead = true;
-    }
-    draw(ctx) {
-        ctx.fillStyle = "yellow";
-        ctx.font = "20px monospace";
-        ctx.fillText(this.value, this.x - camera.x, this.y);
-    }
-}
-
-// ==============================
-// PLAYER
-// ==============================
-class Player extends Entity {
-    constructor(x, y) {
-        super(x, y, 40, 40);
-        this.speed = 350;
-        this.hp = 100;
-        this.facing = 1;
-        this.shootCooldown = 0;
-        this.dashCooldown = 0;
-        this.invuln = 0;
-        this.combo = 0;
-    }
-
-    update(dt) {
-        if (hitstop > 0) return;
-
-        let moveX = 0;
-        if (input.down("a")) { moveX = -1; this.facing = -1; }
-        if (input.down("d")) { moveX = 1; this.facing = 1; }
-
-        this.x += moveX * this.speed * dt;
-
-        if (input.down("k") && this.dashCooldown <= 0) {
-            this.x += 200 * this.facing;
-            this.dashCooldown = 0.8;
-            camera.shake(10, 0.2);
-        }
-
-        if (this.dashCooldown > 0) this.dashCooldown -= dt;
-
-        if (input.down("j") && this.shootCooldown <= 0) {
-            game.scene.add(new Bullet(
-                this.x + this.width / 2,
-                this.y + this.height / 2,
-                this.facing
-            ));
-            this.shootCooldown = 0.2;
-        }
-
-        if (this.shootCooldown > 0) this.shootCooldown -= dt;
-    }
-
-    draw(ctx) {
-        ctx.fillStyle = "cyan";
-        ctx.fillRect(this.x - camera.x, this.y, this.width, this.height);
-    }
-}
-
-// ==============================
-// BULLET
-// ==============================
-class Bullet extends Entity {
-    constructor(x, y, dir) {
-        super(x, y, 10, 6);
-        this.speed = 900 * dir;
-    }
-    update(dt) {
-        if (hitstop > 0) return;
-        this.x += this.speed * dt;
-
-        if (this.x > 5000 || this.x < -100) this.dead = true;
-
-        // collision with dummy
-        if (this.collides(game.dummy)) {
-            this.dead = true;
-            game.dummy.takeDamage(10);
-        }
-    }
-    draw(ctx) {
-        ctx.fillStyle = "lime";
-        ctx.fillRect(this.x - camera.x, this.y, this.width, this.height);
-    }
-}
-
-// ==============================
-// DUMMY ENEMY
-// ==============================
-class Dummy extends Entity {
-    constructor(x, y) {
-        super(x, y, 80, 80);
-        this.hp = 500;
-    }
-
-    takeDamage(amount) {
-        this.hp -= amount;
-        hitstop = 0.05;
-        camera.shake(6, 0.1);
-
-        game.scene.add(new DamageNumber(this.x + 40, this.y, amount));
-
-        for (let i = 0; i < 10; i++) {
-            game.scene.add(new Particle(this.x + 40, this.y + 40, "orange"));
-        }
-    }
-
-    draw(ctx) {
-        ctx.fillStyle = "purple";
-        ctx.fillRect(this.x - camera.x, this.y, this.width, this.height);
-    }
-}
-
-// ==============================
-// SCENE
-// ==============================
-class Scene {
-    constructor() {
-        this.entities = [];
-    }
-    add(entity) { this.entities.push(entity); }
-    update(dt) {
-        this.entities.forEach(e => e.update(dt));
-        this.entities = this.entities.filter(e => !e.dead);
-    }
-    draw(ctx) {
-        this.entities.forEach(e => e.draw(ctx));
-    }
-}
-
-// ==============================
-// GAME
-// ==============================
-class Game {
-    constructor() {
-        this.state = "MENU";
-        this.scene = new Scene();
-        this.player = new Player(200, 500);
-        this.dummy = new Dummy(1000, 480);
-
-        this.scene.add(this.player);
-        this.scene.add(this.dummy);
-    }
-
-    update(dt) {
-        camera.update(dt);
-
-        if (hitstop > 0) {
-            hitstop -= dt;
-            return;
-        }
-
-        if (this.state === "GAME") {
-            this.scene.update(dt);
-            camera.x = this.player.x - canvas.width / 2;
-        }
-    }
-
-    drawBackground() {
-        // sky layer
-        ctx.fillStyle = "#080816";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        // far buildings
-        ctx.fillStyle = "#111133";
-        for (let i = 0; i < 20; i++) {
-            ctx.fillRect(
-                (i * 400 - camera.x * 0.2) % 4000,
-                300,
-                200,
-                300
-            );
-        }
-
-        // floor
-        ctx.fillStyle = "#222";
-        ctx.fillRect(-camera.x, 580, 5000, 200);
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.life--;
     }
 
     draw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.save();
-        camera.apply();
-
-        if (this.state === "MENU") {
-            ctx.fillStyle = "white";
-            ctx.font = "60px monospace";
-            ctx.fillText("NEON WARDEN", 400, 300);
-            ctx.font = "30px monospace";
-            ctx.fillText("Press SPACE", 500, 360);
-            if (input.down(" ")) this.state = "GAME";
-        }
-
-        if (this.state === "GAME") {
-            this.drawBackground();
-            this.scene.draw(ctx);
-        }
-
-        ctx.restore();
+        ctx.globalAlpha = this.life / 30;
+        ctx.fillStyle = this.color;
+        ctx.fillRect(this.x - camera.x, this.y - camera.y, this.size, this.size);
+        ctx.globalAlpha = 1;
     }
 }
 
-const game = new Game();
+const particles = [];
 
-// ==============================
-// LOOP
-// ==============================
-function gameLoop(timestamp) {
-    delta = (timestamp - lastTime) / 1000;
-    lastTime = timestamp;
+function spawnDust(x, y) {
+    for (let i = 0; i < 5; i++) {
+        particles.push(new Particle(
+            x,
+            y,
+            (Math.random() - 0.5) * 4,
+            Math.random() * -2,
+            30,
+            4,
+            "#aaa"
+        ));
+    }
+}
 
-    game.update(delta);
-    game.draw();
+// -----------------
+// PLAYER
+// -----------------
+const player = {
+    x: 400,
+    y: 500,
+    width: 40,
+    height: 60,
+    speed: 6,
+    dashSpeed: 18,
+    dashTime: 0,
+    dashDuration: 12,
+    facing: 1,
+    afterImages: []
+};
 
+function updatePlayer() {
+
+    let moving = false;
+
+    // FIXED A/D
+    if (keys["a"]) {
+        player.x -= player.speed;
+        player.facing = -1;
+        moving = true;
+    }
+    if (keys["d"]) {
+        player.x += player.speed;
+        player.facing = 1;
+        moving = true;
+    }
+
+    // DASH BOTH DIRECTIONS
+    if (keys["shift"] && player.dashTime <= 0) {
+        player.dashTime = player.dashDuration;
+    }
+
+    if (player.dashTime > 0) {
+        player.x += player.facing * player.dashSpeed;
+        player.dashTime--;
+
+        player.afterImages.push({
+            x: player.x,
+            y: player.y,
+            life: 15
+        });
+    }
+
+    if (moving) spawnDust(player.x + 20, player.y + 60);
+
+    player.afterImages.forEach(img => img.life--);
+    player.afterImages = player.afterImages.filter(img => img.life > 0);
+}
+
+function drawPlayer() {
+
+    // Afterimages
+    player.afterImages.forEach(img => {
+        ctx.globalAlpha = img.life / 15;
+        ctx.fillStyle = "#00ffff";
+        ctx.fillRect(img.x - camera.x, img.y - camera.y, player.width, player.height);
+        ctx.globalAlpha = 1;
+    });
+
+    // Player body
+    ctx.fillStyle = "#00ffff";
+    ctx.fillRect(player.x - camera.x, player.y - camera.y, player.width, player.height);
+}
+
+// -----------------
+// BOSS
+// -----------------
+const boss = {
+    x: 1600,
+    y: 450,
+    width: 100,
+    height: 140
+};
+
+function drawBoss() {
+    ctx.fillStyle = "#ff0044";
+    ctx.fillRect(boss.x - camera.x, boss.y - camera.y, boss.width, boss.height);
+}
+
+// -----------------
+// PARALLAX BACKGROUND
+// -----------------
+function drawBackground() {
+
+    // Layer 1 - Far stars
+    ctx.fillStyle = "#111";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = "#1a1a1a";
+    for (let i = 0; i < 50; i++) {
+        let x = (i * 300 - camera.x * 0.2) % 4000;
+        ctx.fillRect(x, 100, 3, 3);
+    }
+
+    // Layer 2 - Mid
+    ctx.fillStyle = "#222";
+    for (let i = 0; i < 30; i++) {
+        let x = (i * 500 - camera.x * 0.5) % 4000;
+        ctx.fillRect(x, 300, 10, 200);
+    }
+
+    // Layer 3 - Foreground floor
+    ctx.fillStyle = "#333";
+    ctx.fillRect(0, 560, canvas.width, 200);
+}
+
+// -----------------
+// CAMERA FOLLOW
+// -----------------
+function updateCamera() {
+    const targetX = player.x - canvas.width / 2;
+    camera.x += (targetX - camera.x) * camera.smooth;
+}
+
+// -----------------
+// GAME LOOP
+// -----------------
+function update() {
+    updatePlayer();
+    updateCamera();
+
+    particles.forEach(p => p.update());
+    particles.splice(0, particles.filter(p => p.life <= 0).length);
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    drawBackground();
+    drawBoss();
+    drawPlayer();
+
+    particles.forEach(p => p.draw());
+}
+
+function gameLoop() {
+    update();
+    draw();
     requestAnimationFrame(gameLoop);
 }
-requestAnimationFrame(gameLoop);
+
+gameLoop();
